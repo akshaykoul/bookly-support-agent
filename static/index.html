@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bookly Support</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>📚 Bookly Support</h1>
+      <label class="voice-toggle">
+        <input type="checkbox" id="voiceToggle">
+        Speak responses
+      </label>
+    </header>
+
+    <div id="messages" class="messages"></div>
+
+    <form id="chatForm" class="input-row">
+      <button type="button" id="micBtn" title="Speak your message">🎤</button>
+      <input type="text" id="messageInput" placeholder="Ask about an order, a return, shipping..." autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+
+    <p class="trace-link">
+      Session: <code id="sessionIdLabel">(new)</code>
+      &middot; <a id="traceLink" href="#" target="_blank">view trace</a>
+    </p>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
