@@ -359,6 +359,18 @@ header h1 { font-size: 16.5px; margin: 0; font-weight: 700; letter-spacing: -0.0
   box-shadow: 0 10px 30px rgba(229, 62, 62, 0.4);
   animation: pulse-lg 1.4s infinite ease-in-out;
 }
+.voice-mic.speaking {
+  background: linear-gradient(135deg, var(--primary-2), var(--primary));
+  box-shadow: 0 10px 30px rgba(87, 84, 255, 0.4);
+  animation: pulse-blue 1.4s infinite ease-in-out;
+}
+.voice-mic.muted {
+  background: var(--panel-alt-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  box-shadow: none;
+  animation: none;
+}
 .voice-mic:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -372,6 +384,10 @@ header h1 { font-size: 16.5px; margin: 0; font-weight: 700; letter-spacing: -0.0
 @keyframes pulse-lg {
   0%, 100% { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.35); }
   50% { box-shadow: 0 0 0 14px rgba(229, 62, 62, 0); }
+}
+@keyframes pulse-blue {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(87, 84, 255, 0.35); }
+  50% { box-shadow: 0 0 0 14px rgba(87, 84, 255, 0); }
 }
 
 .trace-link {
