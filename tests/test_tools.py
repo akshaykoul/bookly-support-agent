@@ -7,7 +7,7 @@ import pytest
 
 from app.db import get_connection, init_db
 from app.seed import seed
-from app.security import mask_email, mask_id
+from app.security import mask_email, mask_id, scrub_text
 from app.tools import (
     check_return_eligibility,
     confirm_return,
@@ -159,3 +159,20 @@ def test_mask_email():
 def test_mask_id():
     assert mask_id("BK-10234") == "****0234"
     assert mask_id("ab") == "**"
+
+
+def test_scrub_text_masks_email_in_free_text():
+    scrubbed = scrub_text("You can reach me at priya.sharma@example.com about this")
+    assert "priya.sharma@example.com" not in scrubbed
+    assert "p***@e***.com" in scrubbed
+
+
+def test_scrub_text_masks_order_id_in_free_text():
+    scrubbed = scrub_text("My order BK-10234 hasn't arrived")
+    assert "BK-10234" not in scrubbed
+    assert "0234" in scrubbed  # last 4 digits still visible, rest masked
+
+
+def test_scrub_text_leaves_non_pii_text_alone():
+    scrubbed = scrub_text("Where is my order? It hasn't shipped yet.")
+    assert scrubbed == "Where is my order? It hasn't shipped yet."

@@ -20,7 +20,7 @@ from typing import Any
 from anthropic import Anthropic
 
 from app.prompts import SYSTEM_PROMPT
-from app.security import redact
+from app.security import redact, scrub_text
 from app.tools import TOOL_SCHEMAS, dispatch_tool
 
 MAX_TOOL_ITERATIONS = 5
@@ -103,7 +103,7 @@ def _log_trace(
             session_id,
             turn_index,
             role,
-            content,
+            scrub_text(content),
             tool_name,
             json.dumps(redact(tool_args)) if tool_args is not None else None,
             json.dumps(redact(tool_result)) if tool_result is not None else None,

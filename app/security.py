@@ -61,3 +61,37 @@ def redact(value: Any) -> Any:
     if isinstance(value, list):
         return [redact(v) for v in value]
     return value
+
+
+# --- Free-text scrubbing ---
+#
+# redact() above only catches PII that arrives in a *named* field (email=,
+# order_id=, ...), which is everything tools.py passes it. It does NOT catch
+# PII embedded in unstructured text -- and the raw user/assistant chat
+# messages logged to agent_traces ARE unstructured text. If a customer types
+# "my email is priya@example.com", there's no field name to key off of.
+#
+# scrub_text() is a pattern-based pass over free text for that case: find
+# anything shaped like an email, a phone number, or a Bookly order ID, and
+# mask it the same way redact() would. It's deliberately simple regex, not a
+# full PII/NER model -- see README "What I'd do differently" re: Presidio as
+# the production-grade upgrade path (catches names, addresses, etc. that
+# pattern matching structurally can't).
+
+_FREE_TEXT_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_FREE_TEXT_PHONE_RE = re.compile(
+    r"(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)"
+)
+_FREE_TEXT_ORDER_ID_RE = re.compile(r"\b[A-Z]{2,4}-\d{4,}\b")
+
+
+def scrub_text(text: str | None) -> str | None:
+    """Mask PII-shaped substrings inside free text before it's logged.
+    Does NOT touch the actual value passed to tools/the model -- only what
+    gets persisted to agent_traces."""
+    if not text:
+        return text
+    text = _FREE_TEXT_EMAIL_RE.sub(lambda m: mask_email(m.group(0)), text)
+    text = _FREE_TEXT_ORDER_ID_RE.sub(lambda m: mask_id(m.group(0)), text)
+    text = _FREE_TEXT_PHONE_RE.sub(lambda m: mask_id(m.group(0), keep=2), text)
+    return text

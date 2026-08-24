@@ -6,8 +6,20 @@
 // reads the same reply text back out loud (speechSynthesis). No separate
 // voice backend, no extra API keys -- the agent core never knows whether a
 // message originated as speech or typing.
+//
+// The passcode gate below is a lightweight guard for a publicly hosted demo
+// link (see BOOKLY_ACCESS_CODE in the backend) -- not real auth. It's a
+// documented scope decision, not a security feature: it just keeps random
+// crawlers/bots off a URL that calls a real, billed LLM API.
 
 let sessionId = null;
+let accessCode = sessionStorage.getItem("bookly_access_code") || "";
+
+const gateEl = document.getElementById("gate");
+const gateForm = document.getElementById("gateForm");
+const gateInput = document.getElementById("gateInput");
+const gateError = document.getElementById("gateError");
+const appEl = document.getElementById("app");
 
 const messagesEl = document.getElementById("messages");
 const formEl = document.getElementById("chatForm");
@@ -16,6 +28,64 @@ const micBtn = document.getElementById("micBtn");
 const voiceToggle = document.getElementById("voiceToggle");
 const sessionLabel = document.getElementById("sessionIdLabel");
 const traceLink = document.getElementById("traceLink");
+
+function showApp() {
+  gateEl.hidden = true;
+  appEl.hidden = false;
+  updateSessionLabel();
+  addMessage(
+    "system",
+    "Hi! I'm the Bookly support assistant. Ask about an order, start a return, or ask a general question."
+  );
+}
+
+async function tryEnterWithCode(code) {
+  const res = await fetch("/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: code || "" }),
+  });
+  const data = await res.json();
+  if (!data.gate_enabled) {
+    // No BOOKLY_ACCESS_CODE configured server-side -- gate is off entirely.
+    return true;
+  }
+  return data.ok === true;
+}
+
+(async function init() {
+  if (accessCode) {
+    const ok = await tryEnterWithCode(accessCode);
+    if (ok) {
+      showApp();
+      return;
+    }
+    sessionStorage.removeItem("bookly_access_code");
+    accessCode = "";
+  } else {
+    // Check whether the gate is even enabled before making the user look at it.
+    const openWithNoCode = await tryEnterWithCode("");
+    if (openWithNoCode) {
+      showApp();
+      return;
+    }
+  }
+  gateEl.hidden = false;
+})();
+
+gateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = gateInput.value.trim();
+  gateError.textContent = "";
+  const ok = await tryEnterWithCode(code);
+  if (ok) {
+    accessCode = code;
+    sessionStorage.setItem("bookly_access_code", code);
+    showApp();
+  } else {
+    gateError.textContent = "That code didn't work. Try again.";
+  }
+});
 
 function addMessage(role, text) {
   const div = document.createElement("div");
@@ -27,7 +97,8 @@ function addMessage(role, text) {
 
 function updateSessionLabel() {
   sessionLabel.textContent = sessionId || "(new)";
-  traceLink.href = sessionId ? `/trace/${sessionId}` : "#";
+  const suffix = accessCode ? `?code=${encodeURIComponent(accessCode)}` : "";
+  traceLink.href = sessionId ? `/trace/${sessionId}${suffix}` : "#";
 }
 
 async function sendMessage(text) {
@@ -38,7 +109,10 @@ async function sendMessage(text) {
   try {
     const res = await fetch("/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Code": accessCode,
+      },
       body: JSON.stringify({ message: text, session_id: sessionId }),
     });
     if (!res.ok) {
@@ -96,9 +170,3 @@ function speak(text) {
   utterance.rate = 1.0;
   window.speechSynthesis.speak(utterance);
 }
-
-updateSessionLabel();
-addMessage(
-  "system",
-  "Hi! I'm the Bookly support assistant. Ask about an order, start a return, or ask a general question."
-);

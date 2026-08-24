@@ -4,13 +4,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.db import get_connection, init_db
 from app.seed import seed
-from app.models import ChatRequest, ChatResponse, new_session_id
+from app.models import AccessCodeRequest, ChatRequest, ChatResponse, new_session_id
 from app.orchestrator import run_turn, get_session_trace
 
 app = FastAPI(title="Bookly Support Agent")
@@ -29,9 +29,42 @@ def startup() -> None:
             "WARNING: ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add "
             "your key before sending a chat message."
         )
+    if not os.environ.get("BOOKLY_ACCESS_CODE"):
+        print(
+            "NOTE: BOOKLY_ACCESS_CODE is not set -- /chat and /trace are open, no passcode "
+            "gate. Set it before deploying anywhere public."
+        )
 
 
-@app.post("/chat", response_model=ChatResponse)
+def require_access_code(
+    x_access_code: str | None = Header(default=None),
+    code: str | None = Query(default=None),
+) -> None:
+    """Gate on a shared passcode -- ONLY when BOOKLY_ACCESS_CODE is configured.
+    Left unset for local dev (no gate); set as a secret on any public deploy
+    so a shared demo link doesn't let anyone burn the real Claude API key.
+    Accepts the code via header (chat requests) or query param (the plain
+    <a href> trace link can't set custom headers). Not real auth -- a
+    documented scope decision, see README."""
+    expected = os.environ.get("BOOKLY_ACCESS_CODE")
+    if not expected:
+        return  # gate disabled (local dev default)
+    if x_access_code != expected and code != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing access code.")
+
+
+@app.post("/verify-code")
+def verify_code(req: AccessCodeRequest) -> dict:
+    """Lets the frontend check a code before showing the chat UI, without
+    needing a real chat turn (and therefore a Claude API call) just to find
+    out the code was wrong."""
+    expected = os.environ.get("BOOKLY_ACCESS_CODE")
+    if not expected:
+        return {"ok": True, "gate_enabled": False}
+    return {"ok": req.code == expected, "gate_enabled": True}
+
+
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_access_code)])
 def chat(req: ChatRequest) -> ChatResponse:
     session_id = req.session_id or new_session_id()
     conn = get_connection()
@@ -44,11 +77,12 @@ def chat(req: ChatRequest) -> ChatResponse:
     return ChatResponse(reply=result["reply"], session_id=session_id)
 
 
-@app.get("/trace/{session_id}")
+@app.get("/trace/{session_id}", dependencies=[Depends(require_access_code)])
 def trace(session_id: str) -> list[dict]:
     """Read-only observability view: the full masked trace for one session.
     Stand-in for what a real tracing dashboard (Langfuse/Datadog/OTel) would
-    show in production -- see README."""
+    show in production -- see README. Gated the same as /chat since it shows
+    conversation content (masked, but still gated for consistency)."""
     conn = get_connection()
     try:
         return get_session_trace(conn, session_id)

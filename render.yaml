@@ -1,0 +1,26 @@
+# Render Blueprint -- https://render.com/docs/blueprint-spec
+#
+# Deploy: push this repo to GitHub, then in the Render dashboard choose
+# "New +" -> "Blueprint" and point it at the repo. Render reads this file
+# automatically. You'll be prompted to fill in the two secret env vars
+# below (ANTHROPIC_API_KEY, BOOKLY_ACCESS_CODE) -- they are never committed
+# to the repo, only stored in Render's dashboard.
+#
+# Free tier note: the service spins down after ~15 min idle and takes a
+# short cold-start on the next request -- fine for an interview demo,
+# would need a paid instance to avoid in real production use.
+
+services:
+  - type: web
+    name: bookly-support-agent
+    runtime: docker
+    plan: free
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false # set manually in the Render dashboard -- never committed
+      - key: BOOKLY_ACCESS_CODE
+        sync: false # set manually in the Render dashboard -- never committed
+      - key: BOOKLY_MODEL
+        value: claude-sonnet-4-5-20250929
+      - key: BOOKLY_DB_PATH
+        value: /tmp/bookly.db # ephemeral disk on free tier -- reseeds on each deploy/restart, which is fine: this is mock demo data, not real customer data

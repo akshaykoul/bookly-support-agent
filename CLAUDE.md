@@ -14,20 +14,26 @@ Full architecture, setup, and rationale are in `README.md` — read that first f
 
 ## Current status (as of 2026-08-24)
 
-- Scaffold is complete and committed (first commit on `main`, remote set to
+- Scaffold is complete and committed (multiple commits on `main`, remote set to
   `https://github.com/akshaykoul/bookly-support-agent.git`). Not yet pushed.
-- 15/15 unit tests pass (`pytest`). They test tool logic directly (verification,
+- 18/18 unit tests pass (`pytest`). They test tool logic directly (verification,
   anti-enumeration, eligibility gating, the initiate/confirm return guardrail, password-reset
-  uniformity, PII masking) without calling the LLM.
+  uniformity, PII masking + free-text scrubbing) without calling the LLM.
+- Added since the initial scaffold: a `scrub_text()` free-text PII scrubber (closes a real gap —
+  raw chat `content` logged to `agent_traces` wasn't being masked, only structured tool
+  args/results were); a `BOOKLY_ACCESS_CODE` passcode gate on `/chat` and `/trace` (for when this
+  is deployed publicly); a Decagon-brand-colored dark UI with a visible "independent interview
+  prototype by Akshay Koul, not an official Decagon product" disclosure banner; a `render.yaml`
+  Render Blueprint for one-click deploy.
 - NOT yet done: a live end-to-end run with a real `ANTHROPIC_API_KEY` exercising the three
   required demo behaviors (multi-turn, real tool use, clarifying question) through the actual
-  chat UI. Do this next if picking the project back up.
+  chat UI; the actual Render deploy (needs the user's Render account); `git push`.
 - The pitch deck (3-5 slides: thesis, architecture, 2-3 key decisions with tradeoffs, what I'd
   do differently) has NOT been built. The content for it already exists across README.md's "Key
   decisions" and "Assumptions" sections — that's the source material, not from scratch.
-- Two stale git lock files may need manual cleanup before your first git command works
-  (`.git/index.lock`, `.git/HEAD.lock`) — left behind by a sandboxed shell that lacked delete
-  permission when this repo was first committed. Delete them if `git status` complains.
+- Stale git lock files (`.git/index.lock`, `.git/HEAD.lock`) can reappear after any git command
+  run via the Cowork device sandbox, which lacks delete permission — they get `mv`'d into a
+  `_to_delete/` folder in the repo as a workaround each time. That folder is safe to delete.
 
 ## Things worth knowing that aren't obvious from the code alone
 

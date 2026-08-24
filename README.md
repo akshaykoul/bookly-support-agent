@@ -22,6 +22,20 @@ customers/orders automatically on first run — delete the file to reseed from s
 
 Run the tests: `pytest`
 
+## Deploying (for sharing a live link)
+
+A `render.yaml` blueprint is included. On [Render](https://render.com): **New +** &rarr;
+**Blueprint** &rarr; point it at this GitHub repo. Render reads `render.yaml` and asks you to fill
+in two secrets (never committed): `ANTHROPIC_API_KEY` and `BOOKLY_ACCESS_CODE`. Once deployed you
+get a public HTTPS URL.
+
+`BOOKLY_ACCESS_CODE` gates `/chat` and `/trace` behind a shared passcode (see "Key decisions"
+below) so a public link doesn't let random bots burn your API quota. Leave it unset for local
+dev — the gate is automatically disabled when the env var isn't present.
+
+Free tier note: the service spins down after ~15 min idle and cold-starts on the next request —
+fine for a demo link, not for real production traffic.
+
 ### Try it with the seeded mock data
 
 - Verified order, eligible return: order `BK-10234`, email `priya.sharma@example.com`
@@ -84,10 +98,22 @@ came from typing or speech — no separate voice backend, no extra API keys.
 
 3. **Observability + masking, mocked but real-shaped.** Every turn and tool call is logged to a
    SQLite `agent_traces` table (latency, token counts, tool args/results, guardrail flags), with
-   a `mask_pii`-style redaction step applied before anything is persisted — the tools use real
-   customer data to do their job, but nothing sensitive is written to logs in cleartext. See
-   `GET /trace/{session_id}` for the raw (masked) timeline; a production deployment would ship
-   this same shape to a real tracing vendor (Langfuse/Datadog/OTel).
+   a redaction step applied before anything is persisted — the tools use real customer data to
+   do their job, but nothing sensitive is written to logs in cleartext. Two layers: `redact()`
+   masks known PII fields (email, order_id, ...) in structured tool args/results, and
+   `scrub_text()` pattern-matches PII shapes (emails, phone numbers, order IDs) inside raw
+   free-text chat messages before they're logged — the latter exists because field-name-based
+   masking alone misses PII a customer just types in a sentence. This is deliberately simple
+   regex, not Microsoft Presidio or another NER-based PII tool — see "What I'd do differently."
+   See `GET /trace/{session_id}` for the raw (masked) timeline; a production deployment would
+   ship this same shape to a real tracing vendor (Langfuse/Datadog/OTel).
+
+4. **A shared passcode gates the public deploy, not real auth.** Once this has a live URL to
+   share with reviewers, anyone with the link could otherwise trigger real, billed Claude API
+   calls. `BOOKLY_ACCESS_CODE` (unset by default, only set on the public deploy) gates `/chat`
+   and `/trace` behind a shared code checked server-side — cheap to build, sufficient to keep
+   the demo link from being scraped, and explicitly not pretending to be customer
+   authentication.
 
 ## Assumptions / documented scope decisions
 
@@ -113,7 +139,16 @@ came from typing or speech — no separate voice backend, no extra API keys.
 ## What I'd do differently in production
 
 Real secrets management instead of `.env`; a persistent multi-instance session store; real
-authentication instead of email-based verification; a dedicated eval harness/regression suite for
-the agent's behavior; a human-handoff path for anything outside the three flows; a real
-observability vendor instead of the homemade trace table; and RAG over a larger policy corpus if
-the FAQ surface grew beyond a handful of topics.
+authentication instead of email-based verification (and instead of the shared-passcode demo
+gate); a dedicated eval harness/regression suite for the agent's behavior; a human-handoff path
+for anything outside the three flows; a real observability vendor instead of the homemade trace
+table; NER-based PII detection (e.g. Microsoft Presidio) instead of regex pattern-matching for
+free-text scrubbing, which would catch names/addresses/etc. that pattern matching structurally
+can't; and RAG over a larger policy corpus if the FAQ surface grew beyond a handful of topics.
+
+## UI branding note
+
+The interface uses Decagon's public brand colors (sourced from their published brand assets) as
+a color scheme, not their logo/wordmark. A visible banner on every page states this is an
+independent prototype built by Akshay Koul for a Decagon interview, not an official Decagon
+product.

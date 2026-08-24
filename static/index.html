@@ -2,11 +2,29 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bookly Support</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="app">
+  <div class="disclosure-banner">
+    Independent prototype built by <strong>Akshay Koul</strong> for a Decagon Solutions
+    Engineering interview &mdash; not an official Decagon product.
+  </div>
+
+  <div id="gate" class="gate">
+    <div class="gate-card">
+      <h2>📚 Bookly Support</h2>
+      <p>This demo is access-gated. Enter the code you were given.</p>
+      <form id="gateForm">
+        <input type="password" id="gateInput" placeholder="Access code" autocomplete="off">
+        <button type="submit">Enter</button>
+      </form>
+      <p id="gateError" class="gate-error"></p>
+    </div>
+  </div>
+
+  <div class="app" id="app" hidden>
     <header>
       <h1>📚 Bookly Support</h1>
       <label class="voice-toggle">

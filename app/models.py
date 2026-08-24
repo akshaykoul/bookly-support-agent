@@ -8,6 +8,10 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
+class AccessCodeRequest(BaseModel):
+    code: str
+
+
 class ChatResponse(BaseModel):
     reply: str
     session_id: str
