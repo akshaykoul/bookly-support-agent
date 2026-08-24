@@ -14,6 +14,8 @@
 
 let sessionId = null;
 let accessCode = sessionStorage.getItem("bookly_access_code") || "";
+let appShown = false;
+let mode = "chat"; // "chat" or "voice" -- mirrors the Claude/ChatGPT app mode switch
 
 const gateEl = document.getElementById("gate");
 const gateForm = document.getElementById("gateForm");
@@ -25,19 +27,46 @@ const messagesEl = document.getElementById("messages");
 const formEl = document.getElementById("chatForm");
 const inputEl = document.getElementById("messageInput");
 const micBtn = document.getElementById("micBtn");
-const voiceToggle = document.getElementById("voiceToggle");
+const voicePanelEl = document.getElementById("voicePanel");
+const voiceStatusEl = document.getElementById("voiceStatus");
+const modeChatBtn = document.getElementById("modeChatBtn");
+const modeVoiceBtn = document.getElementById("modeVoiceBtn");
 const sessionLabel = document.getElementById("sessionIdLabel");
 const traceLink = document.getElementById("traceLink");
 
+// Login-style handoff: fade the gate out, then swap it for the app rather
+// than an instant show/hide -- and guard against ever running this twice
+// (e.g. a stored access code passing silently while a stale gate submit is
+// also in flight).
 function showApp() {
-  gateEl.hidden = true;
+  if (appShown) return;
+  appShown = true;
+  gateEl.classList.add("leaving");
+  setTimeout(() => {
+    gateEl.hidden = true;
+  }, 220);
   appEl.hidden = false;
+  appEl.classList.add("entering");
   updateSessionLabel();
   addMessage(
     "system",
     "Hi! I'm the Bookly support assistant. Ask about an order, start a return, or ask a general question."
   );
 }
+
+function setMode(next) {
+  mode = next;
+  const isVoice = mode === "voice";
+  modeChatBtn.classList.toggle("active", !isVoice);
+  modeVoiceBtn.classList.toggle("active", isVoice);
+  modeChatBtn.setAttribute("aria-selected", String(!isVoice));
+  modeVoiceBtn.setAttribute("aria-selected", String(isVoice));
+  formEl.hidden = isVoice;
+  voicePanelEl.hidden = !isVoice;
+  if (!isVoice && "speechSynthesis" in window) window.speechSynthesis.cancel();
+}
+modeChatBtn.addEventListener("click", () => setMode("chat"));
+modeVoiceBtn.addEventListener("click", () => setMode("voice"));
 
 async function tryEnterWithCode(code) {
   const res = await fetch("/verify-code", {
@@ -93,6 +122,16 @@ function addMessage(role, text) {
   div.textContent = text;
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function showTyping() {
+  const div = document.createElement("div");
+  div.className = "msg assistant typing";
+  div.innerHTML = "<span class=\"dot\"></span><span class=\"dot\"></span><span class=\"dot\"></span>";
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
 }
 
 function updateSessionLabel() {
@@ -105,6 +144,7 @@ async function sendMessage(text) {
   if (!text.trim()) return;
   addMessage("user", text);
   inputEl.value = "";
+  const typingEl = showTyping();
 
   try {
     const res = await fetch("/chat", {
@@ -115,6 +155,7 @@ async function sendMessage(text) {
       },
       body: JSON.stringify({ message: text, session_id: sessionId }),
     });
+    typingEl.remove();
     if (!res.ok) {
       const body = await res.text();
       addMessage("system", `Error: ${res.status} ${body}`);
@@ -124,8 +165,9 @@ async function sendMessage(text) {
     sessionId = data.session_id;
     updateSessionLabel();
     addMessage("assistant", data.reply);
-    if (voiceToggle.checked) speak(data.reply);
+    if (mode === "voice") speak(data.reply);
   } catch (err) {
+    typingEl.remove();
     addMessage("system", `Network error: ${err.message}`);
   }
 }
@@ -148,18 +190,27 @@ if (SpeechRecognitionCtor) {
   recognizer.onresult = (event) => {
     const transcript = event.results[0][0].transcript;
     inputEl.value = transcript;
+    if (voiceStatusEl) voiceStatusEl.textContent = "Tap to speak";
     sendMessage(transcript);
   };
-  recognizer.onerror = () => micBtn.classList.remove("listening");
-  recognizer.onend = () => micBtn.classList.remove("listening");
+  recognizer.onerror = () => {
+    micBtn.classList.remove("listening");
+    if (voiceStatusEl) voiceStatusEl.textContent = "Tap to speak";
+  };
+  recognizer.onend = () => {
+    micBtn.classList.remove("listening");
+    if (voiceStatusEl) voiceStatusEl.textContent = "Tap to speak";
+  };
 
   micBtn.addEventListener("click", () => {
     micBtn.classList.add("listening");
+    if (voiceStatusEl) voiceStatusEl.textContent = "Listening...";
     recognizer.start();
   });
 } else {
   micBtn.disabled = true;
   micBtn.title = "Speech recognition isn't supported in this browser (try Chrome)";
+  if (voiceStatusEl) voiceStatusEl.textContent = "Voice input isn't supported in this browser (try Chrome)";
 }
 
 // --- Voice output (TTS) ---
@@ -169,15 +220,30 @@ if (SpeechRecognitionCtor) {
 // configured, the free-tier quota is exhausted, or the request fails for
 // any other reason. The chat should never break because of a voice issue.
 
+// Both TTS engines will happily narrate an emoji ("grinning face", a chime,
+// etc) if it's in the string -- that's exactly what shows up as "reading
+// the emojis out loud". Strip decorative characters before anything is
+// spoken; the on-screen chat bubble (already rendered via addMessage before
+// speak() is called) keeps the original text untouched.
+function stripForSpeech(text) {
+  return text
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[\u200D\uFE0F]/g, "") // zero-width joiner + variation selector remnants
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 function speakWithBrowser(text) {
   if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel(); // don't stack overlapping utterances
-  const utterance = new SpeechSynthesisUtterance(text);
+  const utterance = new SpeechSynthesisUtterance(stripForSpeech(text));
   utterance.rate = 1.0;
   window.speechSynthesis.speak(utterance);
 }
 
 async function speak(text) {
+  const clean = stripForSpeech(text);
+  if (!clean) return;
   try {
     const res = await fetch("/speak", {
       method: "POST",
@@ -185,7 +251,7 @@ async function speak(text) {
         "Content-Type": "application/json",
         "X-Access-Code": accessCode,
       },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text: clean }),
     });
     if (res.status === 200) {
       const blob = await res.blob();

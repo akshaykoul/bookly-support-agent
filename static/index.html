@@ -4,18 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bookly Support</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="disclosure-banner">
-    Independent prototype built by <strong>Akshay Koul</strong> for a Decagon Solutions
-    Engineering interview &mdash; not an official Decagon product.
+    <span class="disclosure-dot"></span>
+    Independent prototype built by <strong>Akshay Koul</strong> for a Decagon Solutions Engineering
+    interview &mdash; not an official Decagon product.
   </div>
 
   <div id="gate" class="gate">
     <div class="gate-card">
-      <h2>📚 Bookly Support</h2>
-      <p>This demo is access-gated. Enter the code you were given.</p>
+      <div class="brand-mark">B</div>
+      <h2>Bookly Support</h2>
+      <p>This demo is access-gated. Enter the code you were given to continue.</p>
       <form id="gateForm">
         <input type="password" id="gateInput" placeholder="Access code" autocomplete="off">
         <button type="submit">Enter</button>
@@ -26,20 +31,34 @@
 
   <div class="app" id="app" hidden>
     <header>
-      <h1>📚 Bookly Support</h1>
-      <label class="voice-toggle">
-        <input type="checkbox" id="voiceToggle">
-        Speak responses
-      </label>
+      <div class="brand">
+        <div class="brand-mark">B</div>
+        <div class="brand-text">
+          <h1>Bookly</h1>
+          <span class="brand-sub">AI Support</span>
+        </div>
+      </div>
+      <div class="mode-toggle" role="tablist">
+        <button type="button" class="mode-btn active" id="modeChatBtn" role="tab" aria-selected="true">Chat</button>
+        <button type="button" class="mode-btn" id="modeVoiceBtn" role="tab" aria-selected="false">Voice</button>
+      </div>
     </header>
 
     <div id="messages" class="messages"></div>
 
     <form id="chatForm" class="input-row">
-      <button type="button" id="micBtn" title="Speak your message">🎤</button>
       <input type="text" id="messageInput" placeholder="Ask about an order, a return, shipping..." autocomplete="off">
-      <button type="submit">Send</button>
+      <button type="submit" id="sendBtn" title="Send">
+        <span class="icon">➤</span>
+      </button>
     </form>
+
+    <div id="voicePanel" class="voice-panel" hidden>
+      <button type="button" id="micBtn" class="voice-mic" title="Tap to speak">
+        <span class="icon">🎙️</span>
+      </button>
+      <p id="voiceStatus" class="voice-status">Tap to speak</p>
+    </div>
 
     <p class="trace-link">
       Session: <code id="sessionIdLabel">(new)</code>
