@@ -19,12 +19,18 @@ from typing import Any, Optional
 
 from anthropic import Anthropic
 
-from app.prompts import SYSTEM_PROMPT
+from app.prompts import SYSTEM_PROMPT, VOICE_ADDENDUM
 from app.security import redact, scrub_text
 from app.tools import TOOL_SCHEMAS, dispatch_tool
 
 MAX_TOOL_ITERATIONS = 5
 MODEL = os.environ.get("BOOKLY_MODEL", "claude-sonnet-4-5-20250929")
+
+# Structural cap, not just a prompt request -- a voice reply that runs long
+# gets cut off before it turns into a paragraph read aloud. ~200 tokens is
+# comfortably enough for 2-3 conversational sentences plus a tool call.
+MAX_TOKENS_TEXT = 1024
+MAX_TOKENS_VOICE = 220
 
 # Cheap keyword guardrail for obvious prompt-injection / scope-break attempts.
 # This does NOT block the message -- the system prompt instructs the model to
@@ -124,10 +130,12 @@ def get_session_trace(conn, session_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def run_turn(conn, session_id: str, user_message: str) -> dict:
+def run_turn(conn, session_id: str, user_message: str, voice: bool = False) -> dict:
     session = _get_session(session_id)
     session["turn_index"] += 1
     turn_index = session["turn_index"]
+    system_prompt = SYSTEM_PROMPT + VOICE_ADDENDUM if voice else SYSTEM_PROMPT
+    max_tokens = MAX_TOKENS_VOICE if voice else MAX_TOKENS_TEXT
 
     if _check_injection(user_message):
         _log_trace(
@@ -156,8 +164,8 @@ def run_turn(conn, session_id: str, user_message: str) -> dict:
         start = time.monotonic()
         response = get_client().messages.create(
             model=MODEL,
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
+            max_tokens=max_tokens,
+            system=system_prompt,
             tools=TOOL_SCHEMAS,
             messages=session["messages"],
         )

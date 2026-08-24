@@ -8,6 +8,10 @@ are set — see "Optional integrations" below.
 
 ## Quick start
 
+Requires Python 3.9+ (the codebase deliberately uses `typing.Optional[...]` rather than the
+newer `X | None` shorthand, which only works on 3.10+, so it runs on an older system Python
+without needing a specific interpreter version).
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
@@ -40,10 +44,14 @@ in `.env`:
   the source of truth for what a security reviewer would check.
 - **ElevenLabs** (`ELEVENLABS_API_KEY`, optionally `ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL_ID`)
   — real voice synthesis for spoken replies (`app/voice.py`, `POST /speak`), called server-side
-  so the key never reaches the browser. Falls back to the browser's free `speechSynthesis` on any
-  failure (not configured, quota exceeded, network error) — voice trouble should never break the
-  chat. Speech *input* stays on the browser's free `SpeechRecognition`; only output quality was
-  worth spending API budget on.
+  so the key never reaches the browser. Defaults to the `eleven_turbo_v2_5` model with voice
+  settings tuned for a conversational tone (lower stability for natural pitch/pace variation, a
+  touch of style, speaker boost for clarity) rather than the flatter default preset. Emoji and
+  other pictographic characters are stripped from the text before it's sent to either ElevenLabs
+  or the browser fallback — otherwise both will narrate an emoji's name out loud. Falls back to
+  the browser's free `speechSynthesis` on any failure (not configured, quota exceeded, network
+  error) — voice trouble should never break the chat. Speech *input* stays on the browser's free
+  `SpeechRecognition`; only output quality was worth spending API budget on.
 
 ## Deploying (for sharing a live link)
 
@@ -65,17 +73,26 @@ fine for a demo link, not for real production traffic.
 - Verified order, return window expired: order `BK-09876`, email `daniel.osei@example.com`
 - Order not yet delivered: order `BK-10198`, email `priya.sharma@example.com`
 
+Try the same order in both modes to see the difference deliberately built into Voice mode: in
+Chat mode, ask about order `BK-10234` and you'll get the full written detail (status, items,
+return-eligibility date). Switch to Voice mode (top-right pill toggle) and ask the same
+question by speaking — the reply comes back as one or two short spoken sentences ("delivered
+last week, and yes, it's still eligible for return"), not the line-item detail read aloud. Same
+data, same tools, deliberately different reply shape — see "Key decisions" below for why.
+
 ## Architecture
 
 ```
-Browser (chat + mic)
-   │  POST /chat {message, session_id}
+Browser — Chat mode (text) or Voice mode (mic), toggled top-right
+   │  POST /chat {message, session_id, voice}
    ▼
 FastAPI (app/main.py)
    │
    ▼
 Orchestrator (app/orchestrator.py) ── hand-rolled tool-use loop, no framework
-   │  call Claude with system prompt + tool schemas + history
+   │  voice=True:  SYSTEM_PROMPT + VOICE_ADDENDUM, max_tokens capped ~220
+   │  voice=False: SYSTEM_PROMPT only,              max_tokens 1024
+   │  call Claude with that system prompt + tool schemas + history
    │  while stop_reason == "tool_use": run tool, feed tool_result back
    │  (capped at 5 iterations)
    ▼
@@ -87,11 +104,27 @@ SQLite (app/db.py + app/seed.py) ── customers, orders, order_items,
                                      returns, policies, agent_traces
 ```
 
-Voice input stays a thin I/O layer on top of the same text pipeline: the browser's built-in
-`SpeechRecognition` transcribes speech into the same input the text box uses — the agent core
-never knows whether a message originated as typing or speech. Voice *output* now calls
-ElevenLabs server-side for real synthesized speech when configured, falling back to the browser's
-free `speechSynthesis` otherwise — see "Optional integrations" and "Key decisions."
+The `voice` flag on `/chat` is the one place the UI mode deliberately reaches into agent
+behavior, not just I/O. Everything below it stays identical either way — the tools, the
+database, the verification and confirm-return guardrails don't know or care whether a message
+came from typing or speech. What changes in Voice mode is narrower and intentional: a different
+system-prompt addendum and a lower `max_tokens` cap, so replies come back conversational and
+phone-call-shaped instead of the fuller written detail Chat mode gives for the exact same
+question (see "Key decisions").
+
+Speech *input* is a thin layer on top of the same text pipeline in both modes: the browser's
+built-in `SpeechRecognition` transcribes speech into the same string a typed message would be.
+Speech *output* calls ElevenLabs server-side for real synthesized speech when configured
+(`ELEVENLABS_API_KEY` set), tuned for a conversational tone (turbo model, lower stability for
+natural pitch variation) with emoji/pictographic characters stripped before anything is sent to
+either TTS engine — otherwise both ElevenLabs and the browser's `speechSynthesis` will narrate
+an emoji's name out loud instead of skipping it. Falls back to the browser's free
+`speechSynthesis` on any ElevenLabs failure — see "Optional integrations" and "Key decisions."
+
+The UI itself (`static/`) is a single-page app with two screens: an access-code gate (see "Key
+decisions" #4) that hands off to the chat panel with a brief fade rather than an instant swap,
+and the chat panel, styled in a dark, gradient-accented palette inspired by Decagon's own
+product design — colors and general visual language only, see "UI branding note."
 
 ## The three required demo behaviors
 
@@ -167,7 +200,19 @@ would be.
    with a customer all the time — better experience vs. more moving parts — worth naming as a
    deliberate choice rather than papering over.
 
-6. **Considered and declined a guardrails framework** (e.g. Guardrails AI, NeMo Guardrails).
+6. **Voice mode gets a structurally shorter reply, not just a prompt asking for brevity.** A
+   support answer that reads well in a chat bubble (order status, every line item, a policy
+   paragraph) is a wall of talking when a TTS engine reads it aloud verbatim — the same content
+   needs a different *shape* depending on the channel, not just a "be concise" nudge. Voice mode
+   sends a `voice` flag on `/chat`; the orchestrator swaps in a short addendum to the system
+   prompt (one or two sentences, no lists, ask one thing at a time) *and* caps `max_tokens` to
+   ~220 versus 1024 for text — so even if the model tried to ramble, the response is capped
+   before it can turn into a paragraph read aloud. Same tools, same database, same guardrails;
+   only the reply-generation step branches on channel, and it's enforced the same way the rest of
+   this project treats guardrails — as something the code guarantees, not something the prompt
+   merely requests.
+
+7. **Considered and declined a guardrails framework** (e.g. Guardrails AI, NeMo Guardrails).
    This agent's actual failure modes are about *actions* — refunding without confirmation,
    disclosing without verification — which are already solved structurally in the tool layer
    (decisions 1–2), a stronger guarantee than a prompt/content-filter framework provides for
@@ -205,11 +250,18 @@ gating on every prompt/tool change, not just a manual run); a human-handoff path
 outside the three flows; NER-based PII detection (e.g. Microsoft Presidio) instead of regex
 pattern-matching for free-text scrubbing, which would catch names/addresses/etc. that pattern
 matching structurally can't; and RAG over a larger policy corpus if the FAQ surface grew beyond a
-handful of topics.
+handful of topics. Also a basic CI matrix (even just a GitHub Actions job running `pytest` on a
+couple of Python versions) — this repo actually hit a real Python 3.9-vs-3.10 syntax
+incompatibility (`X | None` unions, fixed by switching to `typing.Optional[...]`) when run
+locally on an older interpreter than it was built against; a one-line CI check would have caught
+that before it ever reached a live demo.
 
 ## UI branding note
 
-The interface uses Decagon's public brand colors (sourced from their published brand assets) as
-a color scheme, not their logo/wordmark. A visible banner on every page states this is an
-independent prototype built by Akshay Koul for a Decagon interview, not an official Decagon
-product.
+The interface uses Decagon's public brand colors and general product design language (dark
+background, gradient accents, generous whitespace, rounded surfaces) — sourced from their
+published brand assets and public site, not their logo/wordmark or any copied markup. A visible
+banner on every page states this is an independent prototype built by Akshay Koul for a Decagon
+interview, not an official Decagon product. The Chat/Voice mode toggle follows the same pattern
+used in the Claude and ChatGPT apps — a segmented switch rather than a buried settings checkbox
+— since that's a UI convention users evaluating an AI support agent will already recognize.

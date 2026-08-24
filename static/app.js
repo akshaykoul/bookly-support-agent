@@ -142,6 +142,7 @@ function updateSessionLabel() {
 
 async function sendMessage(text) {
   if (!text.trim()) return;
+  const isVoice = mode === "voice";
   addMessage("user", text);
   inputEl.value = "";
   const typingEl = showTyping();
@@ -153,7 +154,7 @@ async function sendMessage(text) {
         "Content-Type": "application/json",
         "X-Access-Code": accessCode,
       },
-      body: JSON.stringify({ message: text, session_id: sessionId }),
+      body: JSON.stringify({ message: text, session_id: sessionId, voice: isVoice }),
     });
     typingEl.remove();
     if (!res.ok) {

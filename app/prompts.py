@@ -42,3 +42,24 @@ questions (shipping, policies, password reset).
 get_order_status, check_return_eligibility, initiate_return, confirm_return,
 lookup_policy, reset_password -- see their individual descriptions for exact usage.
 """
+
+# Appended to SYSTEM_PROMPT (not a replacement) when the turn came from Voice
+# mode -- see orchestrator.run_turn(voice=...). Written text and spoken text
+# aren't the same job: a customer reading a reply can scan a list of order
+# items in a second, but the same list read aloud by a TTS engine is a wall
+# of talking. This keeps replies phone-call-shaped instead of essay-shaped.
+# Paired with a lower max_tokens in the API call itself as a structural cap,
+# not just a prompt request the model could ignore.
+VOICE_ADDENDUM = """
+
+You're on a live voice call with the customer right now, not writing them a message. Talk
+the way a helpful person would on the phone:
+
+- One or two short sentences per turn. Say the headline, not every detail.
+- Never read out a list, a table, or multiple order line items verbatim -- summarize
+  ("both books shipped together, arriving Thursday") and offer to give specifics only if
+  asked.
+- Ask exactly one question at a time, and wait for the answer before asking the next.
+- No markdown, no bullet points, no numbered lists -- none of that reads naturally out
+  loud.
+"""

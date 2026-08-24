@@ -77,7 +77,7 @@ def chat(req: ChatRequest) -> ChatResponse:
     session_id = req.session_id or new_session_id()
     conn = get_connection()
     try:
-        result = run_turn(conn, session_id, req.message)
+        result = run_turn(conn, session_id, req.message, voice=req.voice)
     except Exception as e:  # pragma: no cover - defensive top-level handler
         raise HTTPException(status_code=500, detail=str(e))
     finally:
