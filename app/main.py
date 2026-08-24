@@ -39,6 +39,15 @@ def startup() -> None:
         )
     if init_langfuse():
         print("Langfuse tracing enabled.")
+    elif os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
+        # Keys are set but init_langfuse() still returned False -- that's a
+        # credential/host problem (see the WARNING logged just above this),
+        # not a missing-config one. Saying "unset" here would be actively
+        # wrong and send you looking in the wrong place.
+        print("NOTE: Langfuse keys are set but failed to authenticate -- see the WARNING above "
+              "for the specific reason (a swapped/malformed key or a wrong LANGFUSE_BASE_URL "
+              "are the two most common causes) -- continuing with the local agent_traces "
+              "table only.")
     else:
         print("NOTE: Langfuse not configured (LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY unset) "
               "-- continuing with the local agent_traces table only.")

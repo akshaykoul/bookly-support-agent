@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from anthropic import Anthropic
 
+from app.observability import trace_turn
 from app.prompts import SYSTEM_PROMPT, VOICE_ADDENDUM
 from app.security import redact, scrub_text
 from app.tools import TOOL_SCHEMAS, dispatch_tool
@@ -146,59 +147,66 @@ def run_turn(conn, session_id: str, user_message: str, voice: bool = False) -> d
     session["messages"].append({"role": "user", "content": user_message})
     _log_trace(conn, session_id, turn_index, "user", content=user_message)
 
-    iterations = 0
-    while True:
-        iterations += 1
-        if iterations > MAX_TOOL_ITERATIONS:
-            fallback = (
-                "I'm having trouble completing that request. Let me connect you with "
-                "a human agent instead."
+    # Everything below makes at least one call to the Anthropic SDK, which
+    # AnthropicInstrumentor auto-traces to Langfuse when it's configured.
+    # Wrapping the whole turn (including every tool-loop iteration) in one
+    # trace_turn span is what ties those auto-traces to OUR session_id --
+    # without it they land in Langfuse as ungrouped traces and never show up
+    # under Sessions, no matter how many turns happen in this conversation.
+    with trace_turn(session_id, voice=voice):
+        iterations = 0
+        while True:
+            iterations += 1
+            if iterations > MAX_TOOL_ITERATIONS:
+                fallback = (
+                    "I'm having trouble completing that request. Let me connect you with "
+                    "a human agent instead."
+                )
+                session["messages"].append({"role": "assistant", "content": fallback})
+                _log_trace(
+                    conn, session_id, turn_index, "guardrail",
+                    content=fallback, guardrail_flag="tool_loop_cap_hit",
+                )
+                return {"reply": fallback, "session_id": session_id}
+
+            start = time.monotonic()
+            response = get_client().messages.create(
+                model=MODEL,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                tools=TOOL_SCHEMAS,
+                messages=session["messages"],
             )
-            session["messages"].append({"role": "assistant", "content": fallback})
+            latency_ms = int((time.monotonic() - start) * 1000)
+
             _log_trace(
-                conn, session_id, turn_index, "guardrail",
-                content=fallback, guardrail_flag="tool_loop_cap_hit",
-            )
-            return {"reply": fallback, "session_id": session_id}
-
-        start = time.monotonic()
-        response = get_client().messages.create(
-            model=MODEL,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            tools=TOOL_SCHEMAS,
-            messages=session["messages"],
-        )
-        latency_ms = int((time.monotonic() - start) * 1000)
-
-        _log_trace(
-            conn, session_id, turn_index, "assistant",
-            content=_extract_text(response),
-            latency_ms=latency_ms,
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
-        )
-
-        session["messages"].append({"role": "assistant", "content": response.content})
-
-        if response.stop_reason != "tool_use":
-            return {"reply": _extract_text(response), "session_id": session_id}
-
-        tool_results = []
-        for block in response.content:
-            if getattr(block, "type", None) != "tool_use":
-                continue
-            result = dispatch_tool(block.name, block.input, conn, session)
-            _log_trace(
-                conn, session_id, turn_index, "tool_call",
-                tool_name=block.name, tool_args=block.input, tool_result=result,
-            )
-            tool_results.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps(result),
-                }
+                conn, session_id, turn_index, "assistant",
+                content=_extract_text(response),
+                latency_ms=latency_ms,
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
             )
 
-        session["messages"].append({"role": "user", "content": tool_results})
+            session["messages"].append({"role": "assistant", "content": response.content})
+
+            if response.stop_reason != "tool_use":
+                return {"reply": _extract_text(response), "session_id": session_id}
+
+            tool_results = []
+            for block in response.content:
+                if getattr(block, "type", None) != "tool_use":
+                    continue
+                result = dispatch_tool(block.name, block.input, conn, session)
+                _log_trace(
+                    conn, session_id, turn_index, "tool_call",
+                    tool_name=block.name, tool_args=block.input, tool_result=result,
+                )
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result),
+                    }
+                )
+
+            session["messages"].append({"role": "user", "content": tool_results})

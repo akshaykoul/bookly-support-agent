@@ -38,10 +38,15 @@ in `.env`:
 
 - **Langfuse** (`LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY`) — real observability dashboard.
   Auto-instruments the existing Anthropic SDK calls via OpenTelemetry (`app/observability.py`);
-  no changes to the orchestrator itself. Free Cloud tier at [langfuse.com](https://langfuse.com)
-  or self-host. This is additive to, not a replacement for, the local masked `agent_traces`
-  table — redaction has to happen inside this app before anything leaves it, so that table stays
-  the source of truth for what a security reviewer would check.
+  no changes to the orchestrator's own logic. Every call inside one `/chat` turn (including every
+  tool-loop iteration) is wrapped in a single trace tagged with this app's own `session_id` — that
+  tag is what makes Langfuse's **Sessions** view group a multi-turn conversation together, rather
+  than showing each Anthropic call as its own disconnected trace. Traces are force-flushed at the
+  end of each turn so they show up within a second or two, since this is a low-traffic local-dev
+  prototype where you're typically tabbing straight over to Langfuse to check. Free Cloud tier at
+  [langfuse.com](https://langfuse.com) or self-host. This is additive to, not a replacement for,
+  the local masked `agent_traces` table — redaction has to happen inside this app before anything
+  leaves it, so that table stays the source of truth for what a security reviewer would check.
 - **ElevenLabs** (`ELEVENLABS_API_KEY`, optionally `ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL_ID`)
   — real voice synthesis for spoken replies (`app/voice.py`, `POST /speak`), called server-side
   so the key never reaches the browser. Defaults to the `eleven_turbo_v2_5` model with voice
