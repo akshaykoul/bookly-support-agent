@@ -4,14 +4,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.db import get_connection, init_db
 from app.seed import seed
-from app.models import AccessCodeRequest, ChatRequest, ChatResponse, new_session_id
+from app.models import AccessCodeRequest, ChatRequest, ChatResponse, SpeakRequest, new_session_id
 from app.orchestrator import run_turn, get_session_trace
+from app.observability import init_langfuse
+from app.voice import synthesize_speech
 
 app = FastAPI(title="Bookly Support Agent")
 
@@ -34,6 +36,11 @@ def startup() -> None:
             "NOTE: BOOKLY_ACCESS_CODE is not set -- /chat and /trace are open, no passcode "
             "gate. Set it before deploying anywhere public."
         )
+    if init_langfuse():
+        print("Langfuse tracing enabled.")
+    else:
+        print("NOTE: Langfuse not configured (LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY unset) "
+              "-- continuing with the local agent_traces table only.")
 
 
 def require_access_code(
@@ -75,6 +82,17 @@ def chat(req: ChatRequest) -> ChatResponse:
     finally:
         conn.close()
     return ChatResponse(reply=result["reply"], session_id=session_id)
+
+
+@app.post("/speak", dependencies=[Depends(require_access_code)])
+def speak(req: SpeakRequest) -> Response:
+    """Server-side ElevenLabs TTS. Returns 204 (no body) when ElevenLabs
+    isn't configured or the call failed for any reason -- the frontend
+    treats that as "fall back to browser speechSynthesis", not an error."""
+    audio = synthesize_speech(req.text)
+    if audio is None:
+        return Response(status_code=204)
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @app.get("/trace/{session_id}", dependencies=[Depends(require_access_code)])

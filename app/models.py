@@ -12,6 +12,10 @@ class AccessCodeRequest(BaseModel):
     code: str
 
 
+class SpeakRequest(BaseModel):
+    text: str
+
+
 class ChatResponse(BaseModel):
     reply: str
     session_id: str

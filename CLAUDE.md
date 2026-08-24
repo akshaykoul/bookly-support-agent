@@ -19,12 +19,20 @@ Full architecture, setup, and rationale are in `README.md` — read that first f
 - 18/18 unit tests pass (`pytest`). They test tool logic directly (verification,
   anti-enumeration, eligibility gating, the initiate/confirm return guardrail, password-reset
   uniformity, PII masking + free-text scrubbing) without calling the LLM.
-- Added since the initial scaffold: a `scrub_text()` free-text PII scrubber (closes a real gap —
-  raw chat `content` logged to `agent_traces` wasn't being masked, only structured tool
-  args/results were); a `BOOKLY_ACCESS_CODE` passcode gate on `/chat` and `/trace` (for when this
-  is deployed publicly); a Decagon-brand-colored dark UI with a visible "independent interview
-  prototype by Akshay Koul, not an official Decagon product" disclosure banner; a `render.yaml`
-  Render Blueprint for one-click deploy.
+- Added in v2: a `scrub_text()` free-text PII scrubber (closes a real gap — raw chat `content`
+  logged to `agent_traces` wasn't being masked, only structured tool args/results were); a
+  `BOOKLY_ACCESS_CODE` passcode gate on `/chat` and `/trace` (for when this is deployed
+  publicly); a Decagon-brand-colored dark UI with a visible "independent interview prototype by
+  Akshay Koul, not an official Decagon product" disclosure banner; a `render.yaml` Render
+  Blueprint for one-click deploy.
+- Added in v3: real Langfuse observability (`app/observability.py`, opt-in via env vars,
+  additive to the local trace table, not a replacement); `evals/run_evals.py`, a 6-scenario
+  Python-native behavioral eval harness against the real API (structural assertions on tool
+  calls/guardrail flags/session state, not string-matching); ElevenLabs TTS for spoken replies
+  (`app/voice.py`, `POST /speak`, opt-in, falls back to browser `speechSynthesis` on any
+  failure) — deliberately output-only, speech input stays on the free browser API. Considered
+  and explicitly declined a guardrails framework (Guardrails AI / NeMo) — see README "Key
+  decisions" #6 for why.
 - NOT yet done: a live end-to-end run with a real `ANTHROPIC_API_KEY` exercising the three
   required demo behaviors (multi-turn, real tool use, clarifying question) through the actual
   chat UI; the actual Render deploy (needs the user's Render account); `git push`.

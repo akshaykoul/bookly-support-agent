@@ -24,3 +24,15 @@ services:
         value: claude-sonnet-4-5-20250929
       - key: BOOKLY_DB_PATH
         value: /tmp/bookly.db # ephemeral disk on free tier -- reseeds on each deploy/restart, which is fine: this is mock demo data, not real customer data
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false # optional -- leave unset in the dashboard to skip Langfuse tracing
+      - key: LANGFUSE_SECRET_KEY
+        sync: false # optional
+      - key: LANGFUSE_BASE_URL
+        value: https://cloud.langfuse.com
+      - key: ELEVENLABS_API_KEY
+        sync: false # optional -- leave unset to fall back to browser TTS
+      - key: ELEVENLABS_VOICE_ID
+        value: 21m00Tcm4TlvDq8ikWAM
+      - key: ELEVENLABS_MODEL_ID
+        value: eleven_flash_v2_5

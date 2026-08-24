@@ -7,5 +7,9 @@ __pycache__/
 venv/
 .venv/
 
+# Local-only scratch created while syncing this repo from the Cowork device
+# sandbox (stale git lock remnants that couldn't be deleted there, and
+# unzip scratch dirs). Not part of the project -- safe to delete anytime.
 _to_delete/
-_update_temp/
+_update_temp*/
+

@@ -2,7 +2,9 @@
 
 A prototype customer support agent for Bookly (fictional online bookstore), built for the
 Decagon Solutions Engineering take-home. Chat + voice UI, real Claude tool-calling against a
-mocked SQLite backend, no agentic framework.
+mocked SQLite backend, no agentic framework. Optional real-vendor integrations (Langfuse
+observability, ElevenLabs voice output) are wired in but stay fully inert until their env vars
+are set — see "Optional integrations" below.
 
 ## Quick start
 
@@ -21,6 +23,27 @@ Open http://localhost:8000. The database (`bookly.db`) is created and seeded wit
 customers/orders automatically on first run — delete the file to reseed from scratch.
 
 Run the tests: `pytest`
+
+Run the behavioral evals (hits the real Claude API, needs `ANTHROPIC_API_KEY` — see "Evals"
+below): `python evals/run_evals.py`
+
+## Optional integrations
+
+All three are inert (silently skipped, app runs fine without them) until their env vars are set
+in `.env`:
+
+- **Langfuse** (`LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY`) — real observability dashboard.
+  Auto-instruments the existing Anthropic SDK calls via OpenTelemetry (`app/observability.py`);
+  no changes to the orchestrator itself. Free Cloud tier at [langfuse.com](https://langfuse.com)
+  or self-host. This is additive to, not a replacement for, the local masked `agent_traces`
+  table — redaction has to happen inside this app before anything leaves it, so that table stays
+  the source of truth for what a security reviewer would check.
+- **ElevenLabs** (`ELEVENLABS_API_KEY`, optionally `ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL_ID`)
+  — real voice synthesis for spoken replies (`app/voice.py`, `POST /speak`), called server-side
+  so the key never reaches the browser. Falls back to the browser's free `speechSynthesis` on any
+  failure (not configured, quota exceeded, network error) — voice trouble should never break the
+  chat. Speech *input* stays on the browser's free `SpeechRecognition`; only output quality was
+  worth spending API budget on.
 
 ## Deploying (for sharing a live link)
 
@@ -64,10 +87,11 @@ SQLite (app/db.py + app/seed.py) ── customers, orders, order_items,
                                      returns, policies, agent_traces
 ```
 
-Voice is a thin I/O layer on top of the same text pipeline: the browser's built-in
-`SpeechRecognition` transcribes speech into the same input the text box uses, and
-`speechSynthesis` reads the reply back out loud. The agent core never knows whether a message
-came from typing or speech — no separate voice backend, no extra API keys.
+Voice input stays a thin I/O layer on top of the same text pipeline: the browser's built-in
+`SpeechRecognition` transcribes speech into the same input the text box uses — the agent core
+never knows whether a message originated as typing or speech. Voice *output* now calls
+ElevenLabs server-side for real synthesized speech when configured, falling back to the browser's
+free `speechSynthesis` otherwise — see "Optional integrations" and "Key decisions."
 
 ## The three required demo behaviors
 
@@ -79,6 +103,21 @@ came from typing or speech — no separate voice backend, no extra API keys.
 - **Clarifying question**: ask to return "something" with no order info, or ask about an
   ambiguous policy topic ("what about international shipping?") — the agent asks rather than
   guessing. This also happens naturally any time verification info is incomplete.
+
+## Evals
+
+`evals/run_evals.py` is a small, Python-native scripted eval harness — not pytest (it calls the
+real API and costs real tokens, so it's deliberately not auto-collected), and not a separate
+framework like promptfoo (a Node CLI, which would add a second toolchain for not much benefit at
+this scale). Six scenarios run real conversational turns through the actual orchestrator and
+assert on *structured* outcomes — which tools got called, guardrail flags, session state — read
+from the same `agent_traces` table `/trace` uses, rather than fragile string-matching on the
+model's natural-language reply. Covers: verification-gated multi-turn, clarifying questions on
+vague requests, the expired-return-window block, the confirm-before-action guardrail,
+prompt-injection flagging, and password-reset anti-enumeration. These are behavioral evals
+against a live LLM, not deterministic unit tests — an occasional failure is itself a signal
+(regression, or a prompt worth tightening), not necessarily a bug the way a `tests/` failure
+would be.
 
 ## Key decisions (see the pitch deck for the full defense)
 
@@ -105,8 +144,11 @@ came from typing or speech — no separate voice backend, no extra API keys.
    free-text chat messages before they're logged — the latter exists because field-name-based
    masking alone misses PII a customer just types in a sentence. This is deliberately simple
    regex, not Microsoft Presidio or another NER-based PII tool — see "What I'd do differently."
-   See `GET /trace/{session_id}` for the raw (masked) timeline; a production deployment would
-   ship this same shape to a real tracing vendor (Langfuse/Datadog/OTel).
+   `GET /trace/{session_id}` serves the raw (masked) timeline; when `LANGFUSE_PUBLIC_KEY` /
+   `LANGFUSE_SECRET_KEY` are set, the same Anthropic SDK calls are also traced to a real Langfuse
+   dashboard (see "Optional integrations") — chosen over building this out further because it's
+   a genuinely small addition (OpenTelemetry auto-instrumentation, no orchestrator changes) that
+   trades a homemade view for a real one, rather than a "would build in production" line item.
 
 4. **A shared passcode gates the public deploy, not real auth.** Once this has a live URL to
    share with reviewers, anyone with the link could otherwise trigger real, billed Claude API
@@ -114,6 +156,24 @@ came from typing or speech — no separate voice backend, no extra API keys.
    and `/trace` behind a shared code checked server-side — cheap to build, sufficient to keep
    the demo link from being scraped, and explicitly not pretending to be customer
    authentication.
+
+5. **Real voice quality (ElevenLabs) traded in deliberately, not by default.** The original
+   scope decision was voice as a free browser-only layer (zero cost, zero extra API). Swapping in
+   ElevenLabs for spoken *output* is a conscious step away from that — it's a better demo but a
+   real dependency: a paid-tier-shaped API, a key to manage, another point of failure. Kept
+   input on the free browser API (no reason to spend budget on something already free), and
+   built the output swap with an automatic fallback to browser TTS on any failure, so a demo
+   never breaks because of a voice quota. This is the kind of trade a solutions engineer makes
+   with a customer all the time — better experience vs. more moving parts — worth naming as a
+   deliberate choice rather than papering over.
+
+6. **Considered and declined a guardrails framework** (e.g. Guardrails AI, NeMo Guardrails).
+   This agent's actual failure modes are about *actions* — refunding without confirmation,
+   disclosing without verification — which are already solved structurally in the tool layer
+   (decisions 1–2), a stronger guarantee than a prompt/content-filter framework provides for
+   this shape of risk. Adopting one would also mean wrapping the LLM call in someone else's
+   abstraction, which is exactly what the brief says to avoid. Right call for this agent's risk
+   profile, not a blanket "guardrail frameworks aren't worth it."
 
 ## Assumptions / documented scope decisions
 
@@ -140,11 +200,12 @@ came from typing or speech — no separate voice backend, no extra API keys.
 
 Real secrets management instead of `.env`; a persistent multi-instance session store; real
 authentication instead of email-based verification (and instead of the shared-passcode demo
-gate); a dedicated eval harness/regression suite for the agent's behavior; a human-handoff path
-for anything outside the three flows; a real observability vendor instead of the homemade trace
-table; NER-based PII detection (e.g. Microsoft Presidio) instead of regex pattern-matching for
-free-text scrubbing, which would catch names/addresses/etc. that pattern matching structurally
-can't; and RAG over a larger policy corpus if the FAQ surface grew beyond a handful of topics.
+gate); a larger, CI-integrated eval suite beyond the 6 scripted scenarios in `evals/` (regression
+gating on every prompt/tool change, not just a manual run); a human-handoff path for anything
+outside the three flows; NER-based PII detection (e.g. Microsoft Presidio) instead of regex
+pattern-matching for free-text scrubbing, which would catch names/addresses/etc. that pattern
+matching structurally can't; and RAG over a larger policy corpus if the FAQ surface grew beyond a
+handful of topics.
 
 ## UI branding note
 

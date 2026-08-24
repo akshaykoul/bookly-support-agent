@@ -5,3 +5,10 @@ pydantic==2.9.2
 python-dotenv==1.0.1
 pytest==8.3.3
 httpx==0.27.2
+
+# Optional integrations -- all no-op until their env vars are set (see
+# .env.example). Left unpinned: fast-moving SDKs, pin exact versions once
+# you've verified them against your account.
+langfuse
+opentelemetry-instrumentation-anthropic
+elevenlabs

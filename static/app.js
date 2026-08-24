@@ -163,10 +163,41 @@ if (SpeechRecognitionCtor) {
 }
 
 // --- Voice output (TTS) ---
-function speak(text) {
+//
+// Tries ElevenLabs first (server-side call, real voice quality) and falls
+// back to the browser's free built-in speechSynthesis if ElevenLabs isn't
+// configured, the free-tier quota is exhausted, or the request fails for
+// any other reason. The chat should never break because of a voice issue.
+
+function speakWithBrowser(text) {
   if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel(); // don't stack overlapping utterances
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = 1.0;
   window.speechSynthesis.speak(utterance);
+}
+
+async function speak(text) {
+  try {
+    const res = await fetch("/speak", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Code": accessCode,
+      },
+      body: JSON.stringify({ text }),
+    });
+    if (res.status === 200) {
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+      return;
+    }
+    // 204 = ElevenLabs not configured, or another non-fatal issue -- fall through.
+  } catch (err) {
+    // network error, etc -- fall through to browser TTS.
+  }
+  speakWithBrowser(text);
 }
