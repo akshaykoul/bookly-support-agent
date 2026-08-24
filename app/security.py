@@ -10,12 +10,12 @@ these helpers first; nothing else in the codebase should need them.
 """
 
 import re
-from typing import Any
+from typing import Any, Optional
 
 _EMAIL_RE = re.compile(r"^([^@]+)@(.+)$")
 
 
-def mask_email(email: str | None) -> str | None:
+def mask_email(email: Optional[str]) -> Optional[str]:
     if not email:
         return email
     m = _EMAIL_RE.match(email)
@@ -29,7 +29,7 @@ def mask_email(email: str | None) -> str | None:
     return f"{local[:1]}***@{masked_domain}"
 
 
-def mask_id(value: str | None, keep: int = 4) -> str | None:
+def mask_id(value: Optional[str], keep: int = 4) -> Optional[str]:
     """Show only the last `keep` characters of an identifier (order id,
     tracking number, etc)."""
     if not value:
@@ -85,7 +85,7 @@ _FREE_TEXT_PHONE_RE = re.compile(
 _FREE_TEXT_ORDER_ID_RE = re.compile(r"\b[A-Z]{2,4}-\d{4,}\b")
 
 
-def scrub_text(text: str | None) -> str | None:
+def scrub_text(text: Optional[str]) -> Optional[str]:
     """Mask PII-shaped substrings inside free text before it's logged.
     Does NOT touch the actual value passed to tools/the model -- only what
     gets persisted to agent_traces."""

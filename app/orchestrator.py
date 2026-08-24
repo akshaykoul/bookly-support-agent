@@ -15,7 +15,7 @@ import json
 import os
 import time
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from anthropic import Anthropic
 
@@ -41,7 +41,7 @@ _INJECTION_PATTERNS = [
     "jailbreak",
 ]
 
-_client: Anthropic | None = None
+_client: Optional[Anthropic] = None
 
 
 def get_client() -> Anthropic:
@@ -85,14 +85,14 @@ def _log_trace(
     session_id: str,
     turn_index: int,
     role: str,
-    content: str | None = None,
-    tool_name: str | None = None,
-    tool_args: dict | None = None,
-    tool_result: dict | None = None,
-    latency_ms: int | None = None,
-    input_tokens: int | None = None,
-    output_tokens: int | None = None,
-    guardrail_flag: str | None = None,
+    content: Optional[str] = None,
+    tool_name: Optional[str] = None,
+    tool_args: Optional[dict] = None,
+    tool_result: Optional[dict] = None,
+    latency_ms: Optional[int] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+    guardrail_flag: Optional[str] = None,
 ) -> None:
     conn.execute(
         """INSERT INTO agent_traces

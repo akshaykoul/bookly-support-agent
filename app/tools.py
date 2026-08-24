@@ -27,7 +27,7 @@ Design principles enforced here (not just in the system prompt):
 """
 
 from datetime import datetime, date
-from typing import Any
+from typing import Any, Optional
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
@@ -190,7 +190,7 @@ def get_order_status(conn, session: dict, order_id: str, email: str) -> dict:
     }
 
 
-def _require_verified(session: dict, order_id: str) -> dict | None:
+def _require_verified(session: dict, order_id: str) -> Optional[dict]:
     if session.get("verified_order_id") != order_id:
         return {
             "error": (

@@ -12,6 +12,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Optional
 
 DB_PATH = os.environ.get("BOOKLY_DB_PATH", "bookly.db")
 
@@ -75,7 +76,7 @@ CREATE TABLE IF NOT EXISTS agent_traces (
 """
 
 
-def get_connection(db_path: str | None = None) -> sqlite3.Connection:
+def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path or DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -88,7 +89,7 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 
 @contextmanager
-def session_scope(db_path: str | None = None):
+def session_scope(db_path: Optional[str] = None):
     """Convenience context manager: yields a connection, commits on success,
     rolls back on exception, always closes."""
     conn = get_connection(db_path)

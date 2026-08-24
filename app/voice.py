@@ -14,9 +14,10 @@ should never go down because a free-tier voice quota ran out.
 """
 
 import os
+from typing import Optional
 
 
-def synthesize_speech(text: str) -> bytes | None:
+def synthesize_speech(text: str) -> Optional[bytes]:
     api_key = os.environ.get("ELEVENLABS_API_KEY")
     if not api_key or not text:
         return None

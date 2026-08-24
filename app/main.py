@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -44,8 +45,8 @@ def startup() -> None:
 
 
 def require_access_code(
-    x_access_code: str | None = Header(default=None),
-    code: str | None = Query(default=None),
+    x_access_code: Optional[str] = Header(default=None),
+    code: Optional[str] = Query(default=None),
 ) -> None:
     """Gate on a shared passcode -- ONLY when BOOKLY_ACCESS_CODE is configured.
     Left unset for local dev (no gate); set as a secret on any public deploy
