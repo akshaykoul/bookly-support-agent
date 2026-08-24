@@ -27,7 +27,7 @@ def synthesize_speech(text: str) -> Optional[bytes]:
         from elevenlabs.types import VoiceSettings
 
         client = ElevenLabs(api_key=api_key)
-        voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "6mx1OKUPIqVRiAHt0nYw")
+        voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "HMsHSO9iPieho74ZXn8A")
         # eleven_turbo_v2_5 over the default eleven_flash_v2_5 -- flash is
         # tuned for lowest latency at some cost to naturalness; turbo sounds
         # noticeably more human for a small latency cost that's a non-issue
@@ -36,7 +36,7 @@ def synthesize_speech(text: str) -> Optional[bytes]:
         model_id = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_turbo_v2_5")
 
         audio_chunks = client.text_to_speech.convert(
-            voice_id=voice_id,
+            voice_id="HMsHSO9iPieho74ZXn8A",
             model_id=model_id,
             text=text,
             output_format="mp3_44100_128",
